@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 Jakub Jirutka <jakub@jirutka.cz>
 # Website: https://github.com/jirutka/keepalived-exporter-cgi/
-# Version: 0.0.0
+# Version: 0.1.0
 # Requirements: jq, keepalived-dump-json
 #
 # A CGI script to expose keepalived statistics as Prometheus-style metrics.

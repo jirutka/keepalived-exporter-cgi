@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 Jakub Jirutka <jakub@jirutka.cz>
 # Website: https://github.com/jirutka/keepalived-exporter-cgi/
-# Version: 0.0.0
+# Version: 0.1.0
 # Requirements: awk, grep, pidof, stat
 #
 # Helper script to signal keepalived to dump JSON and print it. This script
