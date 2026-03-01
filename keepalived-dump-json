@@ -1,0 +1,63 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Jakub Jirutka <jakub@jirutka.cz>
+# Website: https://github.com/jirutka/keepalived-exporter-cgi/
+# Version: 0.0.0
+# Requirements: awk, grep, pidof, stat
+#
+# Helper script to signal keepalived to dump JSON and print it. This script
+# must be run as root.
+#
+# Exit codes:
+#   0   Clean exit, no error has encountered.
+#   1   Generic error.
+#   3   Can't send signal to keepalived or read /tmp/keepalived.json.
+#   10  Unable to find keepalived PID.
+#   11  Timeout waiting for keepalived JSON refresh.
+set -u
+
+readonly PROGNAME='keepalived-dump-json'
+readonly JSON_FILE='/tmp/keepalived.json'
+readonly PID_FILE='/run/keepalived.pid'
+readonly POLL_ITERS=20  # 20 * 0.1s = ~2s timeout
+readonly POLL_SLEEP=0.1
+
+die() {
+	# We intentionally print errors to stdout.
+	printf "ERROR: %s\n" "$2"
+	exit "$1"
+}
+
+get_pid() {
+	{ cat "$PID_FILE" 2>/dev/null \
+		|| pidof keepalived 2>/dev/null | awk '{print $1}'; } \
+	| grep -Ex '[0-9]+'
+}
+
+
+sig="$(keepalived --signum=JSON 2>/dev/null)" \
+	|| die 1 'keepalived is not built with JSON support'
+pid="$(get_pid)" \
+	|| die 10 'unable to find keepalived pid'
+
+old_time="$(stat -c %Y "$JSON_FILE" 2>/dev/null || echo 0)"
+
+kill -s "$sig" "$pid" \
+	|| die 3 "can't send signal to keepalived"
+
+i=0
+while [ "$i" -lt "$POLL_ITERS" ]; do
+	if [ -e "$JSON_FILE" ]; then
+		new_time="$(stat -c %Y "$JSON_FILE" 2>/dev/null)" \
+			|| die 3 "can't read $JSON_FILE"
+		[ "$new_time" -ne "$old_time" ] && break
+	fi
+	sleep "$POLL_SLEEP"
+	i=$(( i + 1 ))
+done
+
+if [ "$i" -lt "$POLL_ITERS" ]; then
+	cat "$JSON_FILE"
+else
+	die 11 'timeout waiting for keepalived JSON refresh'
+fi

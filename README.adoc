@@ -1,0 +1,102 @@
+= Prometheus Keepalived exporter – CGI script
+
+This repository provides code for a simple Prometheus metrics exporter for Keepalived.
+This exporter sends the JSON dump signal to the running keepalived process, waits until the JSON file is actually refreshed, and converts the JSON dump into Prometheus metrics using https://stedolan.github.io/jq/[jq].
+
+It does the same job as https://github.com/mehdy/keepalived-exporter[keepalived-exporter] by Mehdy Bohlool, but using a very simple shell script, https://stedolan.github.io/jq/[jq] and any web server with CGI support.
+If you use some tiny web server, you can get to 1 MiB on disk (most of it is `jq`), and negligible memory usage, instead of 10 MiB of Go bloat.
+
+The metrics are the same as produced by keepalived-exporter (VRRP metrics set), which means you can reuse the same Grafana dashboards.
+
+Unlike the Go exporter, this implementation:
+
+* does not require an HTTP server (embedded in the Go exporter) to be run as root (which is a terrible idea),
+* does not naively assume that keepalived dumps JSON immediately after sending the signal — it waits (with a short timeout) until the JSON file is actually modified,
+* does not assume that Bash is installed everywhere — it is written for plain POSIX `/bin/sh`,
+* has no background daemon itself, no listeners, and no resident memory usage beyond a CGI invocation,
+* does not support keepalived_script_* metrics yet (if you want them, open an issue).
+
+The only runtime dependencies are common base system utilities, `jq` and keepalived built with JSON support.
+
+
+== How it works
+
+On each request:
+
+. The CGI script invokes a privileged helper link:keepalived-dump-json[] which:
+.. finds keepalived PID,
+.. sends the JSON dump signal,
+.. waits until `/tmp/keepalived.json` is modified (with timeout),
+.. prints the JSON dump to stdout.
+. The CGI script pipes the JSON into `jq` and converts it into Prometheus metrics.
+
+If the JSON dump is not refreshed within the timeout, the exporter returns `keepalived_up 0` to avoid returning stale data.
+
+
+== Requirements
+
+* keepalived compiled with JSON support (`--enable-json`)
+* http://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html[POSIX-sh] compatible shell (e.g. Busybox ash, dash, ZSH, bash, …)
+* common Unix userland with awk, grep, pidof, stat (e.g. from Busybox, GNU, …)
+* https://jqlang.org/[jq]
+* doas or sudo
+* a web server with CGI 1.1 support (optional if run standalone)
+
+Keepalived must support `keepalived --signum=JSON` and write its dump to `/tmp/keepalived.json`.
+
+
+== Installation
+
+. Copy link:metrics.cgi[] to your web server’s CGI directory and make it executable.
++
+----
+install -D -m755 -o root metrics.cgi /var/www/cgi-bin/thttpd
+----
+. Copy link:keepalived-dump-json[] to `/usr/local/bin` (or another directory and modify `KEEPALIVED_DUMP_JSON` in link:metrics.cgi[] accordingly), writeable only for root and make it executable:
++
+----
+install -D -m755 -o root keepalived-dump-json -t /usr/local/bin/
+----
+. Add doas _or_ sudo rule allowing the CGI user (e.g. `thttpd`) to execute link:keepalived-dump-json[] without a password:
++
+.*doas*
+----
+permit nopass nolog thttpd as root cmd /usr/local/bin/keepalived-dump-json
+----
++
+.*sudo*
+----
+thttpd ALL=(root) NOPASSWD: /usr/local/bin/keepalived-dump-json
+----
+
+
+== Usage
+
+=== Running via CGI
+
+Then use a web server that supports CGI 1.1 (e.g. https://acme.com/software/thttpd/[thttpd], OpenWrt’s https://openwrt.org/docs/guide-user/services/webserver/uhttpd[uhttpd], BusyBox httpd, Apache HTTP server) and let it serve link:metrics.cgi[].
+
+Make sure that the web server (or dedicated user) running this script can execute the helper script link:keepalived-dump-json[] as root using doas or sudo.
+
+
+==== thttpd
+
+https://acme.com/software/thttpd[thttpd] is a tiny (just 120 kiB) and relatively fast HTTP server with CGI 1.1 support.
+It’s not a full-fledged web server, such as nginx or Apache HTTP server, but if you want to just run a simple CGI script accessible only from a _private_ monitoring network, it’s a great choice.
+
+. Install `thttpd` from your distro’s repository (see https://repology.org/project/thttpd/versions[where’s available]) or compile it yourself.
+. Create a dedicated user for thttpd (e.g. `thttpd`), if you don’t have it already.
+. Copy link:metrics.cgi[] to e.g. `/var/www/cgi-bin/thttpd`, rename it to `metrics` and make it executable.
+. Run `thttpd -p 9165 -d /var/www/cgi-bin/thttpd -u thttpd -c '*'` (you should use an init script or unit file provided by your distribution though).
+
+
+=== Standalone usage
+
+The script can also be run directly from command line: `./metrics.cgi`.
+In this mode it prints Prometheus metrics to stdout and returns a non-zero exit code on failure.
+
+
+== License
+
+This project is licensed under http://opensource.org/licenses/MIT/[MIT License].
+For the full text of the license, see the link:LICENSE[LICENSE] file.
