@@ -8,7 +8,7 @@
 # A CGI script to expose keepalived statistics as Prometheus-style metrics.
 #
 # The metrics are the same as produced by
-# https://github.com/mehdy/keepalived-exporter.
+# https://github.com/mehdy/keepalived-exporter, plus a few extras.
 set -u
 
 # keepalived is usually installed in /usr/sbin, but some CGI servers (thttpd)
@@ -49,6 +49,7 @@ emit("keepalived_up"; {}; 1),
 | ($d.vrid // "") as $vrid
 | ($d.ifp_ifname // "") as $ifp
 | ($d.state // 0) as $state
+| ($d.vipset // false) as $vipset
 
 | (
 	($d.vips // []) as $vips
@@ -90,7 +91,12 @@ emit("keepalived_ip_ttl_errors_total";           {iname:$iname, intf:$ifp, vrid:
 emit("keepalived_packet_length_errors_total";    {iname:$iname, intf:$ifp, vrid:$vrid}; ($s.packet_len_err // 0)),
 emit("keepalived_priority_zero_received_total";  {iname:$iname, intf:$ifp, vrid:$vrid}; ($s.pri_zero_rcvd // 0)),
 emit("keepalived_priority_zero_sent_total";      {iname:$iname, intf:$ifp, vrid:$vrid}; ($s.pri_zero_sent // 0)),
-emit("keepalived_release_master_total";          {iname:$iname, intf:$ifp, vrid:$vrid}; ($s.release_master // 0))
+emit("keepalived_release_master_total";          {iname:$iname, intf:$ifp, vrid:$vrid}; ($s.release_master // 0)),
+emit("keepalived_vrrp_base_priority";            {iname:$iname, intf:$ifp, vrid:$vrid}; ($d.base_priority // 0)),
+emit("keepalived_vrrp_effective_priority";       {iname:$iname, intf:$ifp, vrid:$vrid}; ($d.effective_priority // 0)),
+emit("keepalived_vrrp_last_transition_seconds";  {iname:$iname, intf:$ifp, vrid:$vrid}; ($d.last_transition // 0)),
+emit("keepalived_vrrp_master_priority";          {iname:$iname, intf:$ifp, vrid:$vrid}; ($d.master_priority // 0)),
+emit("keepalived_vrrp_vipset";                   {iname:$iname, intf:$ifp, vrid:$vrid}; (if $vipset then 1 else 0 end))
 '
 
 # Metric headers (HELP/TYPE). Keep these in the same order as output for readability.
@@ -131,6 +137,16 @@ readonly METADATA="\
 # TYPE keepalived_priority_zero_sent_total counter
 # HELP keepalived_release_master_total Number of times the instance released MASTER state.
 # TYPE keepalived_release_master_total counter
+# HELP keepalived_vrrp_base_priority VRRP instance base priority.
+# TYPE keepalived_vrrp_base_priority gauge
+# HELP keepalived_vrrp_effective_priority VRRP instance effective priority.
+# TYPE keepalived_vrrp_effective_priority gauge
+# HELP keepalived_vrrp_last_transition_seconds Unix timestamp of the last VRRP state transition.
+# TYPE keepalived_vrrp_last_transition_seconds gauge
+# HELP keepalived_vrrp_master_priority Master priority as seen by keepalived.
+# TYPE keepalived_vrrp_master_priority gauge
+# HELP keepalived_vrrp_vipset Whether VIPs are set for the instance.
+# TYPE keepalived_vrrp_vipset gauge
 
 "
 

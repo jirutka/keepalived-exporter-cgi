@@ -14,7 +14,13 @@ Unlike the Go exporter, this implementation:
 * does not naively assume that keepalived dumps JSON immediately after sending the signal — it waits (with a short timeout) until the JSON file is actually modified,
 * does not assume that Bash is installed everywhere — it is written for plain POSIX `/bin/sh`,
 * has no background daemon itself, no listeners, and no resident memory usage beyond a CGI invocation,
-* does not support keepalived_script_* metrics yet (if you want them, open an issue).
+* does not support keepalived_script_* metrics yet (if you want them, open an issue),
+* provides additional metrics:
+** keepalived_vrrp_base_priority,
+** keepalived_vrrp_effective_priority,
+** keepalived_vrrp_master_priority,
+** keepalived_vrrp_last_transition_seconds,
+** keepalived_vrrp_vipset.
 
 The only runtime dependencies are common base system utilities, `jq` and keepalived built with JSON support.
 
